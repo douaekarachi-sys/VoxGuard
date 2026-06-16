@@ -1,0 +1,10 @@
+2026-06-16 19:12:07.551 Uvicorn server started on 0.0.0.0:8501
+
+  You can now view your Streamlit app in your browser.
+
+  Local URL: http://localhost:8501
+  Network URL: http://192.168.11.103:8501
+  External URL: http://102.98.206.94:8501
+
+C:\Users\admin\deepfake_project\venv\Lib\site-packages\torch\nn\functional.py:6441: UserWarning: Support for mismatched key_padding_mask and attn_mask is deprecated. Use same type for both instead.
+  key_padding_mask = _canonical_mask(
