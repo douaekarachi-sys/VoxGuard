@@ -1,132 +1,129 @@
-# VoxGuard — Clonage vocal & détection de deepfakes audio
+# VoxGuard — Voice cloning & audio deepfake detection
 
-VoxGuard explore les **deux faces d'une même technologie** : la génération de
-voix synthétiques par clonage, et la détection de ces voix synthétiques. Le but
-n'est pas de livrer un outil de clonage « prêt à l'emploi », mais de comprendre
-comment ces systèmes fonctionnent, quels risques ils posent (usurpation
-d'identité, contournement de l'authentification vocale), et quelles
-contre-mesures — techniques et organisationnelles — on peut y opposer.
+VoxGuard explores **both sides of the same technology**: generating synthetic
+voices by cloning, and detecting those synthetic voices. The goal isn't to ship a
+ready-to-use cloning tool — it's to understand how these systems work, what risks
+they pose (identity theft, bypassing voice authentication), and what
+countermeasures — technical and organizational — can be put against them.
 
-- **Génération** : clonage vocal avec Coqui **XTTS-v2**
-- **Détection** : embeddings **WavLM** + similarité cosinus
-- **Interface** : application Streamlit
-- **Cadre** : projet éducatif, encadré par une charte d'usage et un mémoire éthique
+- **Generation**: voice cloning with Coqui **XTTS-v2**
+- **Detection**: **WavLM** embeddings + cosine similarity
+- **Interface**: Streamlit app
+- **Framing**: educational project, governed by a usage charter and an ethics memo
 
-> ⚠️ Projet strictement éducatif. Le clonage vocal est une technologie
-> **dual-use** : voir la [Charte d'Usage](Charte_Usage.md) et le
-> [Mémoire Éthique](Memoire_Ethique.md). Aucune voix ne doit être clonée sans le
-> consentement explicite de la personne concernée.
+> ⚠️ Strictly educational project. Voice cloning is **dual-use technology**: see
+> the [Usage Charter](Charte_Usage.md) and the [Ethics Memo](Memoire_Ethique.md).
+> No voice may be cloned without the explicit consent of the person concerned.
 
 ---
 
-## Comment ça marche
+## How it works
 
 ```mermaid
 flowchart TB
-    subgraph GEN["Génération — clonage vocal (XTTS-v2)"]
-        REF["Audio de référence<br/>(quelques secondes)"]
-        TXT["Texte à synthétiser"]
-        XTTS["XTTS-v2<br/>speaker embedding + synthèse"]
-        FAKE["Audio cloné"]
+    subgraph GEN["Generation — voice cloning (XTTS-v2)"]
+        REF["Reference audio<br/>(a few seconds)"]
+        TXT["Text to synthesize"]
+        XTTS["XTTS-v2<br/>speaker embedding + synthesis"]
+        FAKE["Cloned audio"]
         REF --> XTTS
         TXT --> XTTS
         XTTS --> FAKE
     end
 
-    subgraph DET["Détection de deepfake (WavLM)"]
-        R2["Voix de référence"]
-        TEST["Audio à tester"]
+    subgraph DET["Deepfake detection (WavLM)"]
+        R2["Reference voice"]
+        TEST["Audio under test"]
         E1["WavLM embedding"]
         E2["WavLM embedding"]
-        COS{"Similarité cosinus<br/>≥ 0.85 ?"}
+        COS{"Cosine similarity<br/>≥ 0.85 ?"}
         REAL["REAL"]
         DEEP["DEEPFAKE"]
         R2 --> E1
         TEST --> E2
         E1 --> COS
         E2 --> COS
-        COS -->|"oui"| REAL
-        COS -->|"non"| DEEP
+        COS -->|"yes"| REAL
+        COS -->|"no"| DEEP
     end
 
-    FAKE -.->|"peut être soumis au détecteur"| TEST
+    FAKE -.->|"can be fed to the detector"| TEST
 ```
 
-### Génération (`src/generator.py`)
+### Generation (`src/generator.py`)
 
-La classe `VoiceGenerator` s'appuie sur **XTTS-v2** (Coqui), un modèle de synthèse
-vocale multilingue. À partir de quelques secondes d'un audio de référence, il
-extrait les caractéristiques du locuteur (*speaker embedding*), puis synthétise
-n'importe quel texte avec ce timbre de voix.
+The `VoiceGenerator` class uses **XTTS-v2** (Coqui), a multilingual
+text-to-speech model. From a few seconds of reference audio it extracts the
+speaker's characteristics (*speaker embedding*), then synthesizes any text in
+that voice's timbre.
 
-### Détection (`src/detector.py`)
+### Detection (`src/detector.py`)
 
-La classe `DeepfakeDetector` utilise **WavLM** (`microsoft/wavlm-base-plus-sd`)
-pour transformer chaque audio en un vecteur (*embedding*) résumant ses
-caractéristiques vocales. On calcule la **similarité cosinus** entre la voix de
-référence et l'audio à tester :
+The `DeepfakeDetector` class uses **WavLM** (`microsoft/wavlm-base-plus-sd`) to
+turn each audio clip into a vector (*embedding*) summarizing its vocal
+characteristics. It then computes the **cosine similarity** between the reference
+voice and the audio under test:
 
-- similarité **≥ 0,85** → même locuteur → `REAL`
-- similarité **< 0,85** → locuteur différent → `DEEPFAKE`
+- similarity **≥ 0.85** → same speaker → `REAL`
+- similarity **< 0.85** → different speaker → `DEEPFAKE`
 
-Le seuil de 0,85 est un compromis : le baisser réduit les faux négatifs (on rate
-moins de deepfakes) mais augmente les faux positifs (on rejette des vraies voix),
-et inversement — le même arbitrage détection/faux positifs que sur n'importe quel
-contrôle de sécurité.
-
----
-
-## Détail d'implémentation notable
-
-XTTS charge et sauvegarde l'audio via `torchaudio`, qui dépend par défaut de
-`torchcodec` (et donc des DLL FFmpeg, absentes sur l'environnement Windows
-utilisé). Plutôt que d'installer toute la chaîne FFmpeg, `generator.py`
-**redirige `torchaudio.load` / `torchaudio.save` vers `soundfile`**, qui gère les
-fichiers WAV du projet sans FFmpeg. Un contournement ciblé qui évite une
-dépendance système lourde.
+The 0.85 threshold is a trade-off: lowering it reduces false negatives (fewer
+deepfakes missed) but raises false positives (more real voices rejected), and
+vice versa — the same detection/false-positive balance as any security control.
 
 ---
 
-## Installation & lancement
+## Notable implementation detail
+
+XTTS loads and saves audio through `torchaudio`, which by default depends on
+`torchcodec` (and therefore FFmpeg shared libraries, absent on the Windows setup
+used). Rather than installing the whole FFmpeg chain, `generator.py`
+**redirects `torchaudio.load` / `torchaudio.save` to `soundfile`**, which handles
+the project's WAV files without FFmpeg. A targeted workaround that avoids a heavy
+system dependency.
+
+---
+
+## Install & run
 
 ```bash
 python -m venv .venv
-# Windows : .venv\Scripts\activate     |    Linux/Mac : source .venv/bin/activate
+# Windows: .venv\Scripts\activate     |    Linux/Mac: source .venv/bin/activate
 pip install -r requirements.txt
 
 streamlit run app.py
 ```
 
-Le premier lancement télécharge les modèles (XTTS-v2 et WavLM), ce qui peut
-prendre quelques minutes.
+The first run downloads the models (XTTS-v2 and WavLM), which can take a few
+minutes.
 
 ---
 
-## Structure du dépôt
+## Layout
 
 ```
 .
-├── app.py                  # interface Streamlit (génération + détection)
+├── app.py                  # Streamlit interface (generation + detection)
 ├── src/
-│   ├── generator.py        # clonage vocal XTTS-v2
-│   ├── detector.py         # détection deepfake WavLM + cosinus
-│   └── utils.py            # chargement audio, similarité cosinus
+│   ├── generator.py        # XTTS-v2 voice cloning
+│   ├── detector.py         # WavLM + cosine deepfake detection
+│   └── utils.py            # audio loading, cosine similarity
 ├── notebooks/
-│   ├── 02-Understand-Embeddings.ipynb        # exploration des embeddings
+│   ├── 02-Understand-Embeddings.ipynb
 │   └── Classification_Deepfake_Detection.ipynb
-├── Charte_Usage.md         # règles d'utilisation (consentement, interdits)
-├── Memoire_Ethique.md      # risques, contre-mesures, positionnement éthique
+├── Charte_Usage.md         # usage rules (consent, prohibited uses)
+├── Memoire_Ethique.md      # risks, countermeasures, ethical stance
 └── requirements.txt
 ```
 
 ---
 
-## Stack technique
+## Stack
 
-| Domaine | Outils |
-|---------|--------|
-| Synthèse vocale | Coqui XTTS-v2 (`coqui-tts`) |
-| Détection | WavLM (`transformers`) + PyTorch |
+| Domain | Tools |
+|--------|-------|
+| Speech synthesis | Coqui XTTS-v2 (`coqui-tts`) |
+| Detection | WavLM (`transformers`) + PyTorch |
 | Audio | librosa, soundfile, torchaudio |
 | ML | scikit-learn, numpy, pandas |
 | Interface | Streamlit |
@@ -134,12 +131,11 @@ prendre quelques minutes.
 
 ---
 
-## Pourquoi ce projet (contexte cybersécurité)
+## Why this project (cybersecurity context)
 
-Les deepfakes vocaux sont une menace concrète : fraude au président,
-contournement de l'authentification vocale bancaire, usurpation d'identité par
-message vocal. VoxGuard aborde le sujet des deux côtés — comprendre l'attaque
-(génération) pour mieux concevoir la défense (détection) — et l'encadre par une
-**charte d'usage** et un **mémoire éthique** qui définissent explicitement les
-usages interdits. C'est cette approche défense + responsabilité qui fait la
-valeur du projet.
+Audio deepfakes are a concrete threat: CEO fraud, bypassing bank voice
+authentication, identity theft via voice message. VoxGuard tackles the subject
+from both sides — understanding the attack (generation) to better design the
+defense (detection) — and frames it with a **usage charter** and an **ethics
+memo** that explicitly define prohibited uses. It's this defense +
+responsibility approach that makes the project valuable.
